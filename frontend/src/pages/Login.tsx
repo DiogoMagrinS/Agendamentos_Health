@@ -1,7 +1,7 @@
 // src/pages/Login.tsx
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../services/api";
+import api, { detectBackendPort } from "../services/api";
 import { jwtDecode } from "jwt-decode";
 import GlassPage from "../components/GlassPage";
 
@@ -19,6 +19,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+
+  // Detecta a porta do backend ao montar o componente
+  useEffect(() => {
+    detectBackendPort().catch((err) => {
+      console.warn('Erro ao detectar porta do backend:', err);
+    });
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,9 +57,21 @@ export default function Login() {
           navigate("/dashboard");
           break;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro no login:", err);
-      setError("Credenciais inválidas");
+      
+      // Mensagens de erro mais específicas
+      if (err.message?.includes("Timeout") || err.message?.includes("timeout")) {
+        setError("Timeout: O servidor demorou muito para responder. Verifique se o servidor está rodando.");
+      } else if (err.message?.includes("conexão") || err.message?.includes("Network Error") || err.code === "ERR_NETWORK") {
+        setError("Erro de conexão: Não foi possível conectar ao servidor. Verifique se o backend está rodando.");
+      } else if (err.response?.status === 401) {
+        setError(err.response?.data?.erro || "Credenciais inválidas");
+      } else if (err.response?.status >= 500) {
+        setError("Erro no servidor. Tente novamente mais tarde.");
+      } else {
+        setError(err.response?.data?.erro || err.message || "Credenciais inválidas");
+      }
     } finally {
       setLoading(false);
     }

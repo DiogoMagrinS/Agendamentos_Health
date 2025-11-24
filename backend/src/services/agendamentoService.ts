@@ -15,6 +15,45 @@ async function enviarNotificacaoSegura(dados: any) {
   }
 }
 
+// Função auxiliar para sincronizar com Google Calendar (opcional - não bloqueia o fluxo)
+async function sincronizarGoogleCalendarSegura(
+  acao: 'criar' | 'atualizar' | 'deletar',
+  profissionalId: number,
+  agendamentoId: number
+) {
+  try {
+    console.log(`[Google Calendar] Tentando ${acao} evento para agendamento ${agendamentoId}, profissional ${profissionalId}`);
+    
+    // Importa o módulo dinamicamente para evitar que a ausência de variáveis de ambiente quebre o app
+    const googleCalendarModule = await import('./googleCalendarService');
+    if (googleCalendarModule) {
+      switch (acao) {
+        case 'criar':
+          await googleCalendarModule.createCalendarEvent(profissionalId, agendamentoId);
+          console.log(`[Google Calendar] ✅ Evento criado com sucesso para agendamento ${agendamentoId}`);
+          break;
+        case 'atualizar':
+          await googleCalendarModule.updateCalendarEvent(profissionalId, agendamentoId);
+          console.log(`[Google Calendar] ✅ Evento atualizado com sucesso para agendamento ${agendamentoId}`);
+          break;
+        case 'deletar':
+          await googleCalendarModule.deleteCalendarEvent(profissionalId, agendamentoId);
+          console.log(`[Google Calendar] ✅ Evento deletado com sucesso para agendamento ${agendamentoId}`);
+          break;
+      }
+    } else {
+      console.warn(`[Google Calendar] ⚠️ Módulo não encontrado`);
+    }
+  } catch (error: any) {
+    // Se o serviço do Google Calendar não existir ou falhar, apenas loga o erro
+    // mas não interrompe a operação do agendamento
+    console.error(`[Google Calendar] ❌ Erro ao sincronizar (${acao}) para agendamento ${agendamentoId}:`, error.message || error);
+    if (error.stack) {
+      console.error(`[Google Calendar] Stack trace:`, error.stack);
+    }
+  }
+}
+
 const prisma = new PrismaClient();
 
 export async function listarAgendamentos() {
@@ -145,6 +184,9 @@ export async function criarAgendamento(data: {
     });
   }
 
+  // Sincroniza com Google Calendar se o profissional tiver conectado
+  await sincronizarGoogleCalendarSegura('criar', data.profissionalId, agendamento.id);
+
   return agendamento;
 }
 
@@ -273,10 +315,24 @@ export async function atualizarAgendamento(
     }
   }
 
+  // Sincroniza com Google Calendar se o evento existir
+  if (dataMudou || dados.status) {
+    await sincronizarGoogleCalendarSegura('atualizar', agendamentoExistente.profissionalId, id);
+  }
+
   return atualizado;
 }
 
 export async function excluirAgendamento(id: number) {
+  const agendamento = await prisma.agendamento.findUnique({
+    where: { id },
+    select: { profissionalId: true, id: true },
+  });
+
+  if (agendamento) {
+    await sincronizarGoogleCalendarSegura('deletar', agendamento.profissionalId, agendamento.id);
+  }
+
   return prisma.agendamento.delete({
     where: { id }
   });

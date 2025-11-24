@@ -22,9 +22,9 @@ export async function getProfissionais(req: Request, res: Response) {
 
     const dados = await listarProfissionais(especialidadeId);
     res.json(dados);
-  } catch (error) {
-    console.error(error);
-    res.status(400).json({ erro: 'Erro ao buscar profissionais' });
+  } catch (error: any) {
+    console.error('Erro ao buscar profissionais:', error);
+    res.status(500).json({ erro: 'Erro ao buscar profissionais', detalhes: process.env.NODE_ENV === 'development' ? error.message : undefined });
   }
 }
 

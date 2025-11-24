@@ -28,10 +28,14 @@ model Profissional {
   diasAtendimento DiaSemana[]
   horaInicio      String
   horaFim         String
-  biografia       String?
-  formacao        String?
-  fotoPerfil      String?
-  agendamentos    Agendamento[] @relation("ProfissionalAgendamentos")
+  biografia          String?
+  formacao           String?
+  fotoPerfil         String?
+  googleCalendarId   String?
+  googleAccessToken  String?
+  googleRefreshToken String?
+  googleTokenExpiry  DateTime?
+  agendamentos       Agendamento[] @relation("ProfissionalAgendamentos")
   avaliacoes      Avaliacao[]
   especialidade   Especialidade @relation(fields: [especialidadeId], references: [id])
   usuario         Usuario       @relation(fields: [usuarioId], references: [id])
@@ -45,6 +49,7 @@ model Agendamento {
   status          StatusAgendamento @default(AGENDADO)
   criadoEm        DateTime          @default(now())
   observacoes     String?
+  googleEventId   String?
   paciente        Usuario           @relation("PacienteAgendamentos", fields: [pacienteId], references: [id])
   profissional    Profissional      @relation("ProfissionalAgendamentos", fields: [profissionalId], references: [id])
   avaliacoes      Avaliacao?
@@ -96,5 +101,45 @@ model Notificacao {
 
   @@index([destinatarioId])
   @@index([agendamentoId])
-  @@index([status])
+}
+
+enum TipoUsuario {
+  PACIENTE
+  PROFISSIONAL
+  RECEPCIONISTA
+}
+
+enum DiaSemana {
+  SEGUNDA
+  TERCA
+  QUARTA
+  QUINTA
+  SEXTA
+  SABADO
+  DOMINGO
+}
+
+enum StatusAgendamento {
+  AGENDADO
+  CONFIRMADO
+  CANCELADO
+  FINALIZADO
+}
+
+enum TipoNotificacao {
+  LEMBRETE
+  CANCELAMENTO
+  EDICAO
+  POS_CONSULTA
+  CONFIRMACAO_PRESENCA
+}
+
+enum CanalNotificacao {
+  WHATSAPP
+}
+
+enum StatusNotificacao {
+  CRIADA
+  ENVIADA
+  FALHOU
 }

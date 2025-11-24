@@ -3,13 +3,31 @@ import { PrismaClient, DiaSemana } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export async function listarProfissionais(especialidadeId?: number) {
-  return await prisma.profissional.findMany({
-    where: especialidadeId ? { especialidadeId } : undefined,
-    include: {
-      usuario: true,
-      especialidade: true // ✅ já trás o nome da especialidade
-    }
-  });
+  try {
+    return await prisma.profissional.findMany({
+      where: especialidadeId ? { especialidadeId } : undefined,
+      include: {
+        usuario: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+            telefone: true,
+            tipo: true,
+          }
+        },
+        especialidade: {
+          select: {
+            id: true,
+            nome: true,
+          }
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Erro ao listar profissionais:", error);
+    throw error;
+  }
 }
 
 export async function buscarProfissionalPorId(id: number) {

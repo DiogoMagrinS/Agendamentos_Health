@@ -11,6 +11,9 @@ import {
   XCircle,
   FileText,
   X,
+  Calendar,
+  Link as LinkIcon,
+  Unlink,
 } from "lucide-react";
 import GlassPage from "../../components/GlassPage";
 
@@ -43,6 +46,8 @@ const DashboardProfissional: React.FC = () => {
   const [modalAnotacoesAberto, setModalAnotacoesAberto] = useState(false);
   const [agendamentoParaFinalizar, setAgendamentoParaFinalizar] = useState<number | null>(null);
   const [anotacoes, setAnotacoes] = useState("");
+  const [googleCalendarConectado, setGoogleCalendarConectado] = useState(false);
+  const [verificandoConexao, setVerificandoConexao] = useState(true);
 
 
   // Buscar agendamentos do profissional
@@ -56,8 +61,85 @@ const DashboardProfissional: React.FC = () => {
     }
   };
 
+  // Verificar conexão com Google Calendar
+  const verificarConexaoGoogleCalendar = async () => {
+    try {
+      const response = await api.get("/google-calendar/check");
+      setGoogleCalendarConectado(response.data.conectado || false);
+    } catch (error) {
+      console.error("Erro ao verificar conexão Google Calendar:", error);
+      setGoogleCalendarConectado(false);
+    } finally {
+      setVerificandoConexao(false);
+    }
+  };
+
+  // Conectar Google Calendar
+  const conectarGoogleCalendar = async () => {
+    try {
+      const response = await api.get("/google-calendar/auth");
+      // Redireciona para a URL de autenticação do Google
+      window.location.href = response.data.authUrl;
+    } catch (error: any) {
+      console.error("Erro ao conectar Google Calendar:", error);
+      toast.error(error.response?.data?.erro || "Erro ao conectar Google Calendar");
+    }
+  };
+
+  // Desconectar Google Calendar
+  const desconectarGoogleCalendar = async () => {
+    if (!confirm("Deseja realmente desconectar o Google Calendar?")) {
+      return;
+    }
+    try {
+      await api.post("/google-calendar/disconnect");
+      setGoogleCalendarConectado(false);
+      toast.success("Google Calendar desconectado com sucesso!");
+    } catch (error: any) {
+      console.error("Erro ao desconectar Google Calendar:", error);
+      toast.error(error.response?.data?.erro || "Erro ao desconectar Google Calendar");
+    }
+  };
+
   useEffect(() => {
-    fetchAgendamentos();
+    // Verificar se veio do callback do Google Calendar PRIMEIRO
+    const urlParams = new URLSearchParams(window.location.search);
+    const googleCalendarStatus = urlParams.get("googleCalendar");
+    const isRedirect = urlParams.get("redirect");
+    
+    // Aguarda um pouco para garantir que o token foi verificado
+    const checkTokenAndProcess = () => {
+      if (isRedirect === "true") {
+        // Se veio do redirect do Google, verifica se o token ainda existe
+        const token = localStorage.getItem('token');
+        if (!token) {
+          // Token foi perdido, redireciona para login
+          toast.error("Sessão expirada. Por favor, faça login novamente.");
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 2000);
+          return;
+        }
+      }
+      
+      if (googleCalendarStatus === "success") {
+        toast.success("Google Calendar conectado com sucesso!");
+        setGoogleCalendarConectado(true);
+        // Remove o parâmetro da URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (googleCalendarStatus === "error") {
+        const message = urlParams.get("message");
+        toast.error(`Erro ao conectar Google Calendar: ${message || "Erro desconhecido"}`);
+        // Remove o parâmetro da URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      fetchAgendamentos();
+      verificarConexaoGoogleCalendar();
+    };
+
+    // Aguarda um pouco para garantir que o AuthProvider verificou o token
+    setTimeout(checkTokenAndProcess, 200);
   }, []);
 
   // Estatísticas
@@ -139,6 +221,35 @@ const DashboardProfissional: React.FC = () => {
               <p className="text-[var(--text-muted)] text-base leading-relaxed">
                 Visão geral dos seus atendimentos
               </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              {verificandoConexao ? (
+                <div className="px-4 py-2 bg-[var(--sand-200)] rounded-lg text-sm text-[var(--text-muted)]">
+                  Verificando...
+                </div>
+              ) : googleCalendarConectado ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-green-100 border border-green-300 rounded-lg text-sm text-green-700">
+                    <Calendar className="w-4 h-4" />
+                    <span>Google Calendar Conectado</span>
+                  </div>
+                  <button
+                    onClick={desconectarGoogleCalendar}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition"
+                  >
+                    <Unlink className="w-4 h-4" />
+                    Desconectar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={conectarGoogleCalendar}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm transition shadow-md"
+                >
+                  <LinkIcon className="w-4 h-4" />
+                  Conectar Google Calendar
+                </button>
+              )}
             </div>
           </div>
         </header>

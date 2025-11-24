@@ -111,15 +111,44 @@ export const listarAgendamentos = async (req: Request, res: Response) => {
   try {
     const agendamentos = await prisma.agendamento.findMany({
       include: {
-        paciente: true,
-        profissional: { include: { usuario: true } },
+        paciente: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+            telefone: true,
+            tipo: true,
+          }
+        },
+        profissional: { 
+          include: { 
+            usuario: {
+              select: {
+                id: true,
+                nome: true,
+                email: true,
+                telefone: true,
+                tipo: true,
+              }
+            },
+            especialidade: {
+              select: {
+                id: true,
+                nome: true,
+              }
+            }
+          } 
+        },
       },
       orderBy: { data: "asc" },
     });
     res.json(agendamentos);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Erro ao listar agendamentos." });
+  } catch (error: any) {
+    console.error("Erro ao listar agendamentos:", error);
+    res.status(500).json({ 
+      error: "Erro ao listar agendamentos.",
+      detalhes: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
@@ -201,20 +230,34 @@ export const excluirEspecialidade = async (req: Request, res: Response) => {
 export const listarUsuarios = async (req: Request, res: Response) => {
   try {
     const usuarios = await prisma.usuario.findMany({
-      include: {
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        telefone: true,
+        tipo: true,
+        criadoEm: true,
         profissional: {
           include: {
-            especialidade: true,
-          },
-        },
+            especialidade: {
+              select: {
+                id: true,
+                nome: true,
+              }
+            }
+          }
+        }
       },
       orderBy: { id: "asc" },
     });
 
     return res.json(usuarios);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao listar usuários:", error);
-    return res.status(500).json({ erro: "Erro interno ao listar usuários." });
+    return res.status(500).json({ 
+      erro: "Erro interno ao listar usuários.",
+      detalhes: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 export const dashboardResumo = async (req: Request, res: Response) => {

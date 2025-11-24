@@ -8,11 +8,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<DecodedToken | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      setIsAuthenticated(true);
-      setUser(getUserFromToken());
-    }
+    const checkAuth = () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const decoded = getUserFromToken();
+          if (decoded) {
+            setIsAuthenticated(true);
+            setUser(decoded);
+          } else {
+            // Token inválido
+            localStorage.removeItem('token');
+            setIsAuthenticated(false);
+            setUser(null);
+          }
+        } catch (error) {
+          // Token inválido ou expirado
+          localStorage.removeItem('token');
+          setIsAuthenticated(false);
+          setUser(null);
+        }
+      } else {
+        setIsAuthenticated(false);
+        setUser(null);
+      }
+    };
+
+    // Verifica imediatamente
+    checkAuth();
+    
+    // Verifica novamente após um pequeno delay (para casos de redirecionamento)
+    const immediateCheck = setTimeout(checkAuth, 50);
+    
+    // Verifica a autenticação periodicamente e quando a janela recebe foco
+    const interval = setInterval(checkAuth, 5000);
+    window.addEventListener('focus', checkAuth);
+    window.addEventListener('storage', checkAuth);
+
+    return () => {
+      clearTimeout(immediateCheck);
+      clearInterval(interval);
+      window.removeEventListener('focus', checkAuth);
+      window.removeEventListener('storage', checkAuth);
+    };
   }, []);
 
   const logout = () => {
