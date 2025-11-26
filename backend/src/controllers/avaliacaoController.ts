@@ -5,6 +5,7 @@ import {
   obterEstatisticasAvaliacao,
   listarProfissionaisComAvaliacoes
 } from '../services/avaliacaoService';
+import { prisma } from '../config/prisma';
 
 export async function postAvaliacao(req: Request, res: Response) {
   try {
@@ -20,8 +21,6 @@ export async function postAvaliacao(req: Request, res: Response) {
     }
 
     // Busca o agendamento para obter o profissionalId
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
     const agendamento = await prisma.agendamento.findUnique({
       where: { id: parseInt(agendamentoId) },
       include: { profissional: true }

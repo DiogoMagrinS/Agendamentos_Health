@@ -59,6 +59,7 @@ export const detectBackendPort = async (): Promise<number> => {
         console.log(`Backend detectado e configurado para porta ${port}`);
         return port;
       }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       // Continua tentando outras portas
     }

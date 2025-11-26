@@ -9,7 +9,7 @@ interface PrivateRouteProps {
 }
 
 export default function PrivateRoute({ children }: PrivateRouteProps) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {

@@ -1,11 +1,9 @@
 import { Request, Response } from 'express';
 import { generateAuthUrl, getToken, setCredentials, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../services/googleCalendarService';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../config/prisma';
 
 export async function authGoogleCalendar(req: Request, res: Response) {
-  const usuario = (req as any).usuario;
+  const usuario = req.usuario;
   if (!usuario?.id) {
     return res.status(401).json({ erro: 'Usuário não autenticado.' });
   }
@@ -65,7 +63,7 @@ export async function googleCalendarCallback(req: Request, res: Response) {
 }
 
 export async function disconnectGoogleCalendar(req: Request, res: Response) {
-  const usuario = (req as any).usuario;
+  const usuario = req.usuario;
   if (!usuario?.id) {
     return res.status(401).json({ erro: 'Usuário não autenticado.' });
   }
@@ -82,7 +80,6 @@ export async function disconnectGoogleCalendar(req: Request, res: Response) {
     await prisma.profissional.update({
       where: { id: profissional.id },
       data: {
-        // @ts-ignore - Campos do Google Calendar podem não existir ainda no banco
         googleAccessToken: null,
         googleRefreshToken: null,
         googleTokenExpiry: null,
@@ -98,7 +95,7 @@ export async function disconnectGoogleCalendar(req: Request, res: Response) {
 }
 
 export async function checkGoogleCalendarConnection(req: Request, res: Response) {
-  const usuario = (req as any).usuario;
+  const usuario = req.usuario;
   if (!usuario?.id) {
     return res.status(401).json({ erro: 'Usuário não autenticado.' });
   }
@@ -106,7 +103,7 @@ export async function checkGoogleCalendarConnection(req: Request, res: Response)
   try {
     const profissional = await prisma.profissional.findUnique({
       where: { usuarioId: usuario.id },
-    }) as any; // Campos do Google Calendar podem não existir ainda no banco
+    });
 
     const isConnected = !!(profissional?.googleAccessToken && profissional?.googleRefreshToken);
     res.status(200).json({ conectado: isConnected });

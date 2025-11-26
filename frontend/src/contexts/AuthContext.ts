@@ -1,13 +1,10 @@
 // src/contexts/AuthContext.ts
 import { createContext } from 'react';
+import type { DecodedToken } from '../utils/getUserFromToken';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: { 
-    id: number; 
-    email: string; 
-    tipo: 'PACIENTE' | 'PROFISSIONAL' | 'RECEPCIONISTA'; 
-  } | null;
+  user: DecodedToken | null;
   logout: () => void;
 }
 

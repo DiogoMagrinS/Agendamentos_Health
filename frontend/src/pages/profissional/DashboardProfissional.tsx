@@ -53,11 +53,12 @@ const DashboardProfissional: React.FC = () => {
   // Buscar agendamentos do profissional
   const fetchAgendamentos = async () => {
     try {
-      const response = await api.get("/agendamentos/me/profissional");
+      const response = await api.get("/agendamentos/profissional/me");
       setAgendamentos(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao buscar agendamentos:", error);
-      toast.error("Erro ao carregar agendamentos.");
+      const errorMessage = error.response?.data?.erro || error.message || "Erro ao carregar agendamentos.";
+      toast.error(errorMessage);
     }
   };
 

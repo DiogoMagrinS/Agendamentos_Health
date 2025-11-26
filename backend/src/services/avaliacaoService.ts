@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../config/prisma';
 
 export async function criarAvaliacao(data: {
   agendamentoId: number;
@@ -23,7 +21,7 @@ export async function criarAvaliacao(data: {
   }
 
   // Verifica se já existe uma avaliação para este agendamento
-  const avaliacaoExistente = await (prisma as any).avaliacao.findUnique({
+  const avaliacaoExistente = await prisma.avaliacao.findUnique({
     where: { agendamentoId: data.agendamentoId }
   });
 
@@ -41,7 +39,7 @@ export async function criarAvaliacao(data: {
     throw new Error('A nota deve ser entre 1 e 5');
   }
 
-  return (prisma as any).avaliacao.create({
+  return prisma.avaliacao.create({
     data: {
       agendamentoId: data.agendamentoId,
       profissionalId: data.profissionalId,
@@ -58,7 +56,7 @@ export async function criarAvaliacao(data: {
 }
 
 export async function listarAvaliacoesDoProfissional(profissionalId: number) {
-  return (prisma as any).avaliacao.findMany({
+  return prisma.avaliacao.findMany({
     where: { profissionalId },
     include: {
       paciente: {
@@ -73,7 +71,7 @@ export async function listarAvaliacoesDoProfissional(profissionalId: number) {
 }
 
 export async function obterEstatisticasAvaliacao(profissionalId: number) {
-  const avaliacoes = await (prisma as any).avaliacao.findMany({
+  const avaliacoes = await prisma.avaliacao.findMany({
     where: { profissionalId },
     select: { nota: true }
   });
@@ -114,17 +112,17 @@ export async function listarProfissionaisComAvaliacoes() {
 
   // Adiciona estatísticas de avaliação para cada profissional
   const profissionaisComStats = await Promise.all(
-    profissionais.map(async (prof: any) => {
+    profissionais.map(async (prof) => {
       const stats = await obterEstatisticasAvaliacao(prof.id);
       // Busca avaliações do profissional
-      const avaliacoes = await (prisma as any).avaliacao.findMany({
+      const avaliacoes = await prisma.avaliacao.findMany({
         where: { profissionalId: prof.id },
         include: {
           paciente: {
             select: { nome: true }
           }
         },
-        orderBy: { criadoEm: 'desc' as any },
+        orderBy: { criadoEm: 'desc' },
         take: 5
       });
       

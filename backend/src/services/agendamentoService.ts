@@ -1,60 +1,43 @@
-import { PrismaClient, StatusAgendamento } from '@prisma/client';
+// src/services/agendamentoService.ts
+// Correção: implementa funções exportadas (criar, listar, atualizar, excluir, listar por usuário/profissional, observar histórico, etc.)
+// Observação: usa imports dinâmicos para notificações e Google Calendar (não bloqueiam operação)
+import { prisma } from '../config/prisma';
+import { StatusAgendamento, DiaSemana } from '@prisma/client';
+import { validarDataFutura } from '../utils/validators';
 
-// Função auxiliar para enviar notificação (opcional - não bloqueia o fluxo)
 async function enviarNotificacaoSegura(dados: any) {
   try {
-    // @ts-ignore - Import dinâmico pode não ser resolvido em tempo de compilação
-    const notificacaoModule = await import('./notificacaoService');
-    if (notificacaoModule && notificacaoModule.enviarNotificacao) {
-      await notificacaoModule.enviarNotificacao(dados);
+    const mod = await import('./notificacaoService');
+    if (mod && mod.enviarNotificacao) {
+      await mod.enviarNotificacao(dados);
     }
-  } catch (error) {
-    // Se o serviço de notificação não existir ou falhar, apenas loga o erro
-    // mas não interrompe a criação do agendamento
-    console.warn('Erro ao enviar notificação (não crítico):', error);
+  } catch (err) {
+    console.warn('enviarNotificacaoSegura falhou (não crítico):', err);
   }
 }
 
-// Função auxiliar para sincronizar com Google Calendar (opcional - não bloqueia o fluxo)
-async function sincronizarGoogleCalendarSegura(
-  acao: 'criar' | 'atualizar' | 'deletar',
-  profissionalId: number,
-  agendamentoId: number
-) {
+async function sincronizarGoogleCalendarSegura(acao: 'criar' | 'atualizar' | 'deletar', profissionalId: number, agendamentoId: number) {
   try {
-    console.log(`[Google Calendar] Tentando ${acao} evento para agendamento ${agendamentoId}, profissional ${profissionalId}`);
-    
-    // Importa o módulo dinamicamente para evitar que a ausência de variáveis de ambiente quebre o app
-    const googleCalendarModule = await import('./googleCalendarService');
-    if (googleCalendarModule) {
-      switch (acao) {
-        case 'criar':
-          await googleCalendarModule.createCalendarEvent(profissionalId, agendamentoId);
-          console.log(`[Google Calendar] ✅ Evento criado com sucesso para agendamento ${agendamentoId}`);
-          break;
-        case 'atualizar':
-          await googleCalendarModule.updateCalendarEvent(profissionalId, agendamentoId);
-          console.log(`[Google Calendar] ✅ Evento atualizado com sucesso para agendamento ${agendamentoId}`);
-          break;
-        case 'deletar':
-          await googleCalendarModule.deleteCalendarEvent(profissionalId, agendamentoId);
-          console.log(`[Google Calendar] ✅ Evento deletado com sucesso para agendamento ${agendamentoId}`);
-          break;
-      }
-    } else {
-      console.warn(`[Google Calendar] ⚠️ Módulo não encontrado`);
+    const mod = await import('./googleCalendarService');
+    if (!mod) {
+      console.warn('Google Calendar module ausente');
+      return;
     }
-  } catch (error: any) {
-    // Se o serviço do Google Calendar não existir ou falhar, apenas loga o erro
-    // mas não interrompe a operação do agendamento
-    console.error(`[Google Calendar] ❌ Erro ao sincronizar (${acao}) para agendamento ${agendamentoId}:`, error.message || error);
-    if (error.stack) {
-      console.error(`[Google Calendar] Stack trace:`, error.stack);
+    switch (acao) {
+      case 'criar':
+        if (mod.createCalendarEvent) await mod.createCalendarEvent(profissionalId, agendamentoId);
+        break;
+      case 'atualizar':
+        if (mod.updateCalendarEvent) await mod.updateCalendarEvent(profissionalId, agendamentoId);
+        break;
+      case 'deletar':
+        if (mod.deleteCalendarEvent) await mod.deleteCalendarEvent(profissionalId, agendamentoId);
+        break;
     }
+  } catch (err) {
+    console.warn('sincronizarGoogleCalendarSegura erro (não crítico):', err);
   }
 }
-
-const prisma = new PrismaClient();
 
 export async function listarAgendamentos() {
   return prisma.agendamento.findMany({
@@ -66,7 +49,8 @@ export async function listarAgendamentos() {
           especialidade: true
         }
       }
-    }
+    },
+    orderBy: { data: 'asc' }
   });
 }
 
@@ -80,7 +64,7 @@ export async function buscarAgendamentoPorId(id: number) {
       }
     }
   });
-  if (!agendamento) throw new Error();
+  if (!agendamento) throw new Error('Agendamento não encontrado');
   return agendamento;
 }
 
@@ -88,46 +72,58 @@ export async function criarAgendamento(data: {
   pacienteId: number;
   profissionalId: number;
   data: Date;
-  observacoes?: string;
+  observacoes?: string | null;
 }) {
-  // Verifica se o paciente existe
-  const paciente = await prisma.usuario.findUnique({
-    where: { id: data.pacienteId }
+  // valida paciente
+  const paciente = await prisma.usuario.findUnique({ where: { id: data.pacienteId } });
+  if (!paciente) throw new Error('Paciente não encontrado');
+  if (paciente.tipo !== 'PACIENTE') throw new Error('Usuário não é um paciente');
+
+  // valida profissional
+  const profissional = await prisma.profissional.findUnique({ 
+    where: { id: data.profissionalId },
+    include: { especialidade: true }
   });
-
-  if (!paciente) {
-    throw new Error('Paciente não encontrado');
-  }
-
-  if (paciente.tipo !== 'PACIENTE') {
-    throw new Error('Usuário não é um paciente');
-  }
-
-  const profissional = await prisma.profissional.findUnique({
-    where: { id: data.profissionalId }
-  });
-
-  if (!profissional) {
-    throw new Error('Profissional não encontrado');
-  }
+  if (!profissional) throw new Error('Profissional não encontrado');
 
   const dataAgendamento = new Date(data.data);
+  if (isNaN(dataAgendamento.getTime())) throw new Error('Data inválida');
+  
+  // Valida se a data é futura
+  const dataValida = validarDataFutura(dataAgendamento);
+  if (!dataValida.valida) throw new Error(dataValida.erro);
 
-  if (isNaN(dataAgendamento.getTime())) {
-    throw new Error('Data inválida');
+  // Valida dia da semana (0 = domingo, 1 = segunda, ..., 6 = sábado)
+  const diaSemanaNumero = dataAgendamento.getDay();
+  const diasSemanaMap: Record<number, DiaSemana> = {
+    0: 'DOMINGO',
+    1: 'SEGUNDA',
+    2: 'TERCA',
+    3: 'QUARTA',
+    4: 'QUINTA',
+    5: 'SEXTA',
+    6: 'SABADO',
+  };
+  const diaSemanaEnum = diasSemanaMap[diaSemanaNumero];
+  
+  if (!diaSemanaEnum || !profissional.diasAtendimento.includes(diaSemanaEnum)) {
+    throw new Error('Profissional não atende neste dia da semana');
   }
 
-  if (dataAgendamento <= new Date()) {
-    throw new Error('Data deve ser futura');
+  // Valida horário de atendimento
+  const horaAgendamento = dataAgendamento.toTimeString().slice(0, 5); // HH:MM
+  if (horaAgendamento < profissional.horaInicio || horaAgendamento >= profissional.horaFim) {
+    throw new Error(`Horário fora do período de atendimento (${profissional.horaInicio} - ${profissional.horaFim})`);
   }
 
+  // verifica conflito (mesma data/hora)
   const conflito = await prisma.agendamento.findFirst({
     where: {
       profissionalId: data.profissionalId,
-      data: dataAgendamento
+      data: dataAgendamento,
+      status: { not: StatusAgendamento.CANCELADO }
     }
   });
-
   if (conflito) throw new Error('Horário já agendado');
 
   const agendamento = await prisma.agendamento.create({
@@ -135,57 +131,57 @@ export async function criarAgendamento(data: {
       pacienteId: data.pacienteId,
       profissionalId: data.profissionalId,
       data: dataAgendamento,
-      observacoes: data.observacoes
+      observacoes: data.observacoes ?? null
     }
   });
 
-  // paciente já foi buscado anteriormente, não precisa buscar novamente
+  // busca info do profissional (usuario) para mensagens
   const profissionalUsuario = await prisma.profissional.findUnique({
     where: { id: data.profissionalId },
     include: { usuario: true },
   });
 
-  if (paciente && profissionalUsuario?.usuario) {
+  // envia notificações (não bloqueante)
+  if (paciente) {
     await enviarNotificacaoSegura({
-      tipo: 'EDICAO',
+      tipo: 'NOVO_AGENDAMENTO',
       canal: 'WHATSAPP',
       destinatario: {
         idUsuario: paciente.id,
         tipoUsuario: paciente.tipo,
         nome: paciente.nome,
-        telefone: paciente.telefone,
+        telefone: paciente.telefone || '',
       },
       conteudo: '',
       meta: {
         data: dataAgendamento.toLocaleString('pt-BR'),
-        profissional: profissionalUsuario.usuario.nome,
+        profissional: profissionalUsuario?.usuario?.nome ?? null
       },
       agendamentoId: agendamento.id,
-    });
+    }).catch(() => {});
   }
 
-  if (profissionalUsuario?.usuario && paciente) {
+  if (profissionalUsuario?.usuario) {
     await enviarNotificacaoSegura({
-      tipo: 'EDICAO',
+      tipo: 'NOVO_AGENDAMENTO_PROFISSIONAL',
       canal: 'WHATSAPP',
       destinatario: {
         idUsuario: profissionalUsuario.usuario.id,
         tipoUsuario: profissionalUsuario.usuario.tipo,
         nome: profissionalUsuario.usuario.nome,
-        telefone: profissionalUsuario.usuario.telefone,
+        telefone: profissionalUsuario.usuario.telefone || '',
       },
       conteudo: '',
       meta: {
         data: dataAgendamento.toLocaleString('pt-BR'),
         paciente: paciente.nome,
-        tipo: 'NOVO_AGENDAMENTO',
       },
       agendamentoId: agendamento.id,
-    });
+    }).catch(() => {});
   }
 
-  // Sincroniza com Google Calendar se o profissional tiver conectado
-  await sincronizarGoogleCalendarSegura('criar', data.profissionalId, agendamento.id);
+  // sincroniza com Google Calendar (não bloqueante)
+  await sincronizarGoogleCalendarSegura('criar', data.profissionalId, agendamento.id).catch(() => {});
 
   return agendamento;
 }
@@ -197,6 +193,7 @@ export async function atualizarAgendamento(
     profissionalId: number;
     data: Date;
     status: string;
+    observacoes?: string | null;
   }>
 ) {
   const agendamentoExistente = await prisma.agendamento.findUnique({
@@ -210,10 +207,7 @@ export async function atualizarAgendamento(
   if (!agendamentoExistente) throw new Error('Agendamento não encontrado');
 
   const dataAtualizada = dados.data ? new Date(dados.data) : undefined;
-
-  if (dataAtualizada && dataAtualizada <= new Date()) {
-    throw new Error('A data do agendamento deve estar no futuro');
-  }
+  if (dataAtualizada && dataAtualizada <= new Date()) throw new Error('A data do agendamento deve estar no futuro');
 
   if (dados.profissionalId && dataAtualizada) {
     const conflito = await prisma.agendamento.findFirst({
@@ -223,43 +217,37 @@ export async function atualizarAgendamento(
         NOT: { id }
       }
     });
-
-    if (conflito) {
-      throw new Error('Este horário já está ocupado para o profissional');
-    }
+    if (conflito) throw new Error('Este horário já está ocupado para o profissional');
   }
 
-  // Verifica se o status mudou
   const statusAlterado = dados.status && dados.status !== agendamentoExistente.status;
-
-  // Atualiza o agendamento
   const dataAnterior = agendamentoExistente.data;
 
   const atualizado = await prisma.agendamento.update({
     where: { id },
     data: {
-      pacienteId: dados.pacienteId,
-      profissionalId: dados.profissionalId,
-      data: dataAtualizada,
-      status: dados.status as any
+      pacienteId: dados.pacienteId ?? undefined,
+      profissionalId: dados.profissionalId ?? undefined,
+      data: dataAtualizada ?? undefined,
+      status: dados.status ? (dados.status as StatusAgendamento) : undefined,
+      observacoes: dados.observacoes ?? undefined,
     }
   });
 
-  // Se o status foi alterado, registra no histórico
-  if (statusAlterado) {
+  // registra histórico se status mudou
+  if (statusAlterado && dados.status) {
     await prisma.historicoStatus.create({
       data: {
         agendamentoId: id,
-        status: dados.status as any
+        status: dados.status as StatusAgendamento
       }
     });
   }
 
+  // notificações se data mudou
   const paciente = agendamentoExistente.paciente;
   const profissionalUsuario = agendamentoExistente.profissional.usuario;
-
-  const dataMudou =
-    dataAtualizada && dataAtualizada.getTime() !== new Date(dataAnterior).getTime();
+  const dataMudou = dataAtualizada && dataAtualizada.getTime() !== new Date(dataAnterior).getTime();
 
   if (dataMudou) {
     const resumo = `Nova data/horário: ${dataAtualizada?.toLocaleString('pt-BR')}`;
@@ -272,17 +260,17 @@ export async function atualizarAgendamento(
           idUsuario: paciente.id,
           tipoUsuario: paciente.tipo,
           nome: paciente.nome,
-          telefone: paciente.telefone,
+          telefone: paciente.telefone || '',
         },
         conteudo: `Seu agendamento foi atualizado. ${resumo}`,
         meta: { agendamentoId: atualizado.id },
         agendamentoId: atualizado.id,
-      });
+      }).catch(() => {});
     }
 
     if (profissionalUsuario) {
       await enviarNotificacaoSegura({
-        tipo: 'EDICAO',
+        tipo: 'EDICAO_PROFISSIONAL',
         canal: 'WHATSAPP',
         destinatario: {
           idUsuario: profissionalUsuario.id,
@@ -293,7 +281,7 @@ export async function atualizarAgendamento(
         conteudo: `Um agendamento da sua agenda foi atualizado. ${resumo}`,
         meta: { agendamentoId: atualizado.id },
         agendamentoId: atualizado.id,
-      });
+      }).catch(() => {});
     }
   }
 
@@ -311,13 +299,13 @@ export async function atualizarAgendamento(
         conteudo: `Um agendamento foi cancelado (${agendamentoExistente.data.toLocaleString('pt-BR')}).`,
         meta: { agendamentoId: atualizado.id },
         agendamentoId: atualizado.id,
-      });
+      }).catch(() => {});
     }
   }
 
-  // Sincroniza com Google Calendar se o evento existir
+  // sincroniza com Google Calendar (se necessário)
   if (dataMudou || dados.status) {
-    await sincronizarGoogleCalendarSegura('atualizar', agendamentoExistente.profissionalId, id);
+    await sincronizarGoogleCalendarSegura('atualizar', agendamentoExistente.profissionalId, id).catch(() => {});
   }
 
   return atualizado;
@@ -330,12 +318,10 @@ export async function excluirAgendamento(id: number) {
   });
 
   if (agendamento) {
-    await sincronizarGoogleCalendarSegura('deletar', agendamento.profissionalId, agendamento.id);
+    await sincronizarGoogleCalendarSegura('deletar', agendamento.profissionalId, agendamento.id).catch(() => {});
   }
 
-  return prisma.agendamento.delete({
-    where: { id }
-  });
+  return prisma.agendamento.delete({ where: { id } });
 }
 
 export async function listarAgendamentosDoUsuario(usuarioId: number) {
@@ -345,8 +331,8 @@ export async function listarAgendamentosDoUsuario(usuarioId: number) {
     include: {
       profissional: {
         include: {
-          usuario: true,          // ✅ pega todos os dados do usuário
-          especialidade: true     // ✅ pega a especialidade correta vinculada ao profissional
+          usuario: true,
+          especialidade: true
         }
       }
     }
@@ -354,7 +340,10 @@ export async function listarAgendamentosDoUsuario(usuarioId: number) {
 }
 
 export async function listarAgendamentosDoProfissional(profissionalId: number, data?: string) {
-  const where: any = { profissionalId };
+  const where: {
+    profissionalId: number;
+    data?: { gte: Date; lte: Date };
+  } = { profissionalId };
 
   if (data) {
     const start = new Date(`${data}T00:00:00`);
@@ -365,7 +354,25 @@ export async function listarAgendamentosDoProfissional(profissionalId: number, d
   return prisma.agendamento.findMany({
     where,
     include: {
-      paciente: { select: { nome: true, email: true } },
+      paciente: { 
+        select: { 
+          id: true,
+          nome: true, 
+          email: true,
+          telefone: true
+        } 
+      },
+      profissional: {
+        include: {
+          usuario: {
+            select: {
+              nome: true,
+              email: true
+            }
+          },
+          especialidade: true
+        }
+      }
     },
     orderBy: { data: 'asc' },
   });
@@ -377,7 +384,7 @@ export async function atualizarObservacoes(id: number, observacoes: string) {
 
   return prisma.agendamento.update({
     where: { id },
-    data: { observacoes: observacoes.trim() || null }
+    data: { observacoes: observacoes?.trim() || null }
   });
 }
 

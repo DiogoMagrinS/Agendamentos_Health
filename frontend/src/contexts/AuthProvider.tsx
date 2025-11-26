@@ -22,6 +22,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setIsAuthenticated(false);
             setUser(null);
           }
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
           // Token inválido ou expirado
           localStorage.removeItem('token');

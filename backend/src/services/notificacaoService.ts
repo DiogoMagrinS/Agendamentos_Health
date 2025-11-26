@@ -1,9 +1,6 @@
-import { PrismaClient, TipoUsuario } from '@prisma/client';
+import { TipoUsuario, TipoNotificacao, CanalNotificacao as PrismaCanalNotificacao, StatusNotificacao, Prisma } from '@prisma/client';
 import axios from 'axios';
-
-const prisma = new PrismaClient();
-
-export type CanalNotificacao = 'WHATSAPP';
+import { prisma } from '../config/prisma';
 
 interface Destinatario {
   idUsuario: number;
@@ -14,7 +11,7 @@ interface Destinatario {
 
 export interface DadosNotificacao {
   tipo: 'LEMBRETE' | 'CANCELAMENTO' | 'EDICAO' | 'POS_CONSULTA' | 'CONFIRMACAO_PRESENCA';
-  canal: CanalNotificacao;
+  canal: PrismaCanalNotificacao;
   destinatario: Destinatario;
   conteudo: string;
   meta?: Record<string, unknown>;
@@ -87,13 +84,13 @@ interface RegistroNotificacao extends DadosNotificacao {
 async function registrarNotificacao(registro: RegistroNotificacao) {
   await prisma.notificacao.create({
     data: {
-      tipo: registro.tipo as any,
-      canal: registro.canal as any,
+      tipo: registro.tipo as TipoNotificacao,
+      canal: registro.canal as PrismaCanalNotificacao,
       destinatarioId: registro.destinatario.idUsuario,
       destinatarioTipo: registro.destinatario.tipoUsuario,
       conteudo: registro.conteudo,
-      meta: (registro.meta ?? {}) as any,
-      status: registro.status as any,
+      meta: (registro.meta ?? {}) as Prisma.InputJsonValue,
+      status: registro.status as StatusNotificacao,
       detalhesErro: registro.detalhesErro ?? null,
       agendamentoId: registro.agendamentoId,
     },

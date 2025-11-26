@@ -1,11 +1,9 @@
 import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
 import * as dotenv from 'dotenv';
 import * as crypto from 'crypto';
+import { prisma } from '../config/prisma';
 
 dotenv.config();
-
-const prisma = new PrismaClient();
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
