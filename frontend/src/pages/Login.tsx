@@ -47,6 +47,10 @@ export default function Login() {
       const res = await api.post("/auth/login", { email, senha });
       const token = res.data.token;
 
+      // Log do token no console
+      console.log('🔑 Token JWT:', token);
+      console.log('📋 Token decodificado:', jwtDecode<DecodedToken>(token));
+
       localStorage.setItem("token", token);
 
       const decoded = jwtDecode<DecodedToken>(token);
